@@ -9,42 +9,80 @@ import (
 	"syscall"
 	"time"
 
+
 	"cardapio-henry-api/internal/config"
 	"cardapio-henry-api/internal/database"
-	apihttp "cardapio-henry-api/internal/http"
+	"cardapio-henry-api/internal/handler"
+	"cardapio-henry-api/internal/middleware"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	cfg := config.Load()
+	ctx := context.Background()
 
-	db, err := database.NewPostgresPool(cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("erro ao conectar no banco: %v", err)
+	// Carrega variáveis de ambiente do arquivo .env (se existir).
+	// Tenta múltiplos caminhos: ao rodar "go run" de cmd/api, o CWD é cmd/api e o .env está na raiz (../.env).
+	for _, p := range []string{".env", "../.env", "../../.env"} {
+		if err := godotenv.Load(p); err == nil {
+			break
+		}
 	}
-	defer db.Close()
 
-	server := apihttp.NewServer(cfg)
-	httpServer := &http.Server{
-		Addr:              ":" + cfg.HTTPPort,
-		Handler:           server.Routes(),
-		ReadHeaderTimeout: 5 * time.Second,
+	// Conecta ao PostgreSQL usando variáveis de ambiente (.env)
+	cfg := config.LoadDB()
+	_, err := database.Connect(ctx, cfg)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer database.Close()
+
+	log.Println("conectado ao PostgreSQL")
+
+	mux := http.NewServeMux()
+
+	// ROTAS PUBLICAS
+	mux.HandleFunc("POST /register", handler.Register)
+	mux.HandleFunc("POST /login", handler.Login)
+
+	// ROTAS PROTEGIDAS POR TOKEN
+	mux.Handle("/categorias", middleware.JWT(http.HandlerFunc(handler.Categorias)))
+	mux.Handle("DELETE /categorias/{id}", middleware.JWT(http.HandlerFunc(handler.DeletarCategoria)))
+	mux.Handle("/produtos", middleware.JWT(http.HandlerFunc(handler.Produtos)))
+	mux.Handle("/produtos/{id}", middleware.JWT(http.HandlerFunc(handler.ProdutosByID)))
+	mux.Handle("GET /clientes", middleware.JWT(http.HandlerFunc(handler.Clientes)))
+	mux.Handle("/enderecos", middleware.JWT(http.HandlerFunc(handler.Enderecos)))
+	mux.Handle("/enderecos/{id}", middleware.JWT(http.HandlerFunc(handler.EnderecosByID)))
+	mux.Handle("/pedidos", middleware.JWT(http.HandlerFunc(handler.Pedidos)))
+	mux.Handle("GET /pedidos/{id}", middleware.JWT(http.HandlerFunc(handler.PedidosByID)))
+	mux.Handle("PUT /pedidos/{id}", middleware.JWT(http.HandlerFunc(handler.AtualizarStatusPedido)))
+	mux.Handle("POST /upload", middleware.JWT(http.HandlerFunc(handler.Upload)))
+	mux.Handle("/financas", middleware.JWT(http.HandlerFunc(handler.Financas)))
+	mux.Handle("/financas/{id}", middleware.JWT(http.HandlerFunc(handler.FinancasByID)))
+	
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: middleware.CORS(mux),
 	}
 
 	go func() {
-		log.Printf("API iniciada na porta %s", cfg.HTTPPort)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("erro no servidor HTTP: %v", err)
+		log.Println("Servidor rodando na porta 8080")
+		err := srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %v", err)
 		}
 	}()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
-	<-stop
+	// Aguarda Ctrl+C ou sinal de encerramento para desligar com segurança
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	log.Println("encerrando...")
+
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Printf("erro ao finalizar servidor: %v", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("erro ao desligar servidor HTTP: %v", err)
 	}
 }
