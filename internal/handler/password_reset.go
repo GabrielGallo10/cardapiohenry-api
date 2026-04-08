@@ -146,8 +146,7 @@ func PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 		SenderName:  mailCfg.SenderName,
 		SenderEmail: mailCfg.SenderEmail,
 	}
-	toAddr := strings.TrimSpace(body.Email)
-	if err := notify.SendPasswordResetEmail(cfg, toAddr, code); err != nil {
+	if err := notify.SendPasswordResetEmail(ctx, cfg, emailNorm, code); err != nil {
 		_, _ = database.Pool.Exec(ctx,
 			`UPDATE password_reset_challenges SET consumed_at = NOW()
 			 WHERE email_norm = $1 AND consumed_at IS NULL`,

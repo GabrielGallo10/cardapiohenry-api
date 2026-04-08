@@ -2,6 +2,7 @@ package notify
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,7 +21,11 @@ type TransactionalEmail struct {
 }
 
 // SendPasswordResetEmail envia o código de 6 dígitos por e-mail (Brevo API v3).
-func SendPasswordResetEmail(cfg TransactionalEmail, toEmail, code string) error {
+func SendPasswordResetEmail(ctx context.Context, cfg TransactionalEmail, toEmail, code string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	toEmail = strings.TrimSpace(toEmail)
 	subject := "HenryBebidas — código para redefinir senha"
 	textBody := fmt.Sprintf(`Olá,
 
@@ -44,7 +49,10 @@ O código expira em 10 minutos. Se não pediu isto, ignore este e-mail.
 		if cfg.APIKey == "" || cfg.SenderEmail == "" {
 			return fmt.Errorf("brevo: defina BREVO_API_KEY e BREVO_SENDER_EMAIL (remetente verificado na Brevo)")
 		}
-		return sendBrevoSMTP(cfg, toEmail, subject, textBody, htmlBody)
+		if toEmail == "" {
+			return fmt.Errorf("brevo: destinatário em falta")
+		}
+		return sendBrevoSMTP(ctx, cfg, toEmail, subject, textBody, htmlBody)
 	default:
 		return fmt.Errorf("EMAIL_PROVIDER inválido: use brevo ou log")
 	}
@@ -67,7 +75,7 @@ type brevoTo struct {
 	Email string `json:"email"`
 }
 
-func sendBrevoSMTP(cfg TransactionalEmail, to, subject, text, html string) error {
+func sendBrevoSMTP(ctx context.Context, cfg TransactionalEmail, to, subject, text, html string) error {
 	name := strings.TrimSpace(cfg.SenderName)
 	if name == "" {
 		name = "HenryBebidas"
@@ -82,7 +90,8 @@ func sendBrevoSMTP(cfg TransactionalEmail, to, subject, text, html string) error
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		ctx,
 		http.MethodPost,
 		"https://api.brevo.com/v3/smtp/email",
 		bytes.NewReader(body),
@@ -90,19 +99,30 @@ func sendBrevoSMTP(cfg TransactionalEmail, to, subject, text, html string) error
 	if err != nil {
 		return err
 	}
-	req.Header.Set("accept", "application/json")
-	req.Header.Set("content-type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("api-key", cfg.APIKey)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
+		log.Printf("[brevo] pedido falhou: %v", err)
 		return err
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		log.Printf("[brevo] HTTP %d para=%s corpo=%s", res.StatusCode, to, truncateForLog(b, 500))
 		return fmt.Errorf("brevo HTTP %d: %s", res.StatusCode, string(b))
 	}
+	log.Printf("[brevo] e-mail transacional aceite para=%s", to)
 	return nil
+}
+
+func truncateForLog(b []byte, max int) string {
+	s := string(b)
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }

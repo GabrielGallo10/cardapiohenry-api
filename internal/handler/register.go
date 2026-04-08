@@ -3,6 +3,7 @@
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -66,13 +67,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 	emailStored := strings.TrimSpace(req.Email)
 
-	var telB strings.Builder
-	for _, r := range req.Telefone {
-		if r >= '0' && r <= '9' {
-			telB.WriteRune(r)
-		}
-	}
-	tel := telB.String()
+	tel := digitsOnlyPhone(req.Telefone)
 	if len(tel) < 10 {
 		http.Error(w, "Telefone inválido", http.StatusBadRequest)
 		return
@@ -92,9 +87,21 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			http.Error(w, "E-mail ou telefone já cadastrados", http.StatusConflict)
-			return
+		if errors.As(err, &pgErr) {
+			log.Printf("[register] postgres %s %s: %s", pgErr.Severity, pgErr.Code, pgErr.Message)
+			switch pgErr.Code {
+			case "23505":
+				http.Error(w, "E-mail ou telefone já cadastrados", http.StatusConflict)
+				return
+			case "42P01":
+				http.Error(w, "Base de dados sem schema: a tabela usuarios não existe. Crie/importe o schema neste Postgres (ex.: base nova na Neon).", http.StatusInternalServerError)
+				return
+			case "42501":
+				http.Error(w, "Sem permissão para inserir na tabela de utilizadores. Verifique o utilizador e grants no Postgres.", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			log.Printf("[register] insert: %v", err)
 		}
 		http.Error(w, "Erro ao cadastrar usuário.", http.StatusInternalServerError)
 		return

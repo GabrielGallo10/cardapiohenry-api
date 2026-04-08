@@ -2,11 +2,15 @@
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 
+	"henry-bebidas-api/internal/auth"
 	"henry-bebidas-api/internal/config"
 	"henry-bebidas-api/internal/database"
-	"henry-bebidas-api/internal/auth"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -37,28 +41,54 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Busca o funcionário pelo telefone
-	var idUsuario int
-	var passwordHash string
-	var tel string
-	var cargo string
-	err := database.Pool.QueryRow(
-		r.Context(),
-		`SELECT id_usuario, telefone, senha, cargo FROM usuarios WHERE telefone = $1`,
-		req.Telefone,
-	).Scan(&idUsuario, &tel, &passwordHash, &cargo)
-	if err != nil {
-		http.Error(w, "Telefone não encontrado!", http.StatusUnauthorized)
+	telInput := digitsOnlyPhone(req.Telefone)
+	if len(telInput) < 10 {
+		http.Error(w, "Telefone inválido", http.StatusBadRequest)
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		http.Error(w, "Senha inválida!", http.StatusUnauthorized)
+	var idUsuario int64
+	var senha pgtype.Text
+	var tel string
+	var cargo pgtype.Text
+	var err error
+	for _, candidate := range phoneLookupCandidates(telInput) {
+		err = database.Pool.QueryRow(
+			r.Context(),
+			`SELECT id_usuario, telefone, senha, cargo FROM usuarios WHERE telefone = $1`,
+			candidate,
+		).Scan(&idUsuario, &tel, &senha, &cargo)
+		if err == nil {
+			break
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		log.Printf("[login] postgres: %v", err)
+		http.Error(w, "Erro ao validar login", http.StatusInternalServerError)
 		return
+	}
+	if err != nil {
+		http.Error(w, "Telefone ou senha incorretos.", http.StatusUnauthorized)
+		return
+	}
+
+	if !senha.Valid || senha.String == "" {
+		http.Error(w, "Telefone ou senha incorretos.", http.StatusUnauthorized)
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(senha.String), []byte(req.Password)); err != nil {
+		http.Error(w, "Telefone ou senha incorretos.", http.StatusUnauthorized)
+		return
+	}
+
+	cargoStr := "client"
+	if cargo.Valid {
+		cargoStr = cargo.String
 	}
 
 	cfg := config.LoadJWT()
-	token, err := auth.GenerateToken(cfg.Secret, cfg.ExpirationHours, int64(idUsuario), tel)
+	token, err := auth.GenerateToken(cfg.Secret, cfg.ExpirationHours, idUsuario, tel)
 	if err != nil {
 		http.Error(w, "Erro ao gerar token", http.StatusUnauthorized)
 		return
@@ -66,8 +96,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(loginResponse{
-		Token:     token,
-		Cargo: cargo,
+		Token: token,
+		Cargo: cargoStr,
 	}); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}

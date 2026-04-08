@@ -4,41 +4,66 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // DB contém os parâmetros de conexão com o PostgreSQL.
 type DB struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Database string
-	SSLMode  string
+	// ConnString, se não vazio, é usado tal como vem do ambiente (ex.: DATABASE_URL da Neon).
+	ConnString string
+	Host       string
+	Port       string
+	User       string
+	Password   string
+	Database   string
+	SSLMode    string
 }
 
 // DSN retorna a connection string no formato aceito pelo pgx/postgres.
 // Usa net/url para codificar usuário e senha (evita que @, #, : etc. quebrem a URL).
 func (c DB) DSN() string {
+	if s := strings.TrimSpace(c.ConnString); s != "" {
+		return s
+	}
 	u := &url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(c.User, c.Password),
 		Host:     c.Host + ":" + c.Port,
 		Path:     "/" + c.Database,
-		RawQuery: "sslmode=" + c.SSLMode,
+		RawQuery: "sslmode=" + url.QueryEscape(c.SSLMode),
 	}
 	return u.String()
+}
+
+func defaultSSLMode(host, explicit string) string {
+	if strings.TrimSpace(explicit) != "" {
+		return explicit
+	}
+	// Neon e outros hosts na cloud exigem TLS; sem isto a conexão falha ou o registo quebra de forma opaca.
+	h := strings.ToLower(host)
+	if strings.Contains(h, "neon.tech") || strings.Contains(h, ".neon.build") {
+		return "require"
+	}
+	return "disable"
 }
 
 // LoadDB lê a configuração do banco a partir de variáveis de ambiente.
 // Use o arquivo .env na raiz do projeto (não versionado) para definir os valores.
 func LoadDB() DB {
+	if conn := strings.TrimSpace(os.Getenv("DATABASE_URL")); conn != "" {
+		return DB{ConnString: conn}
+	}
+	if conn := strings.TrimSpace(os.Getenv("NEON_DATABASE_URL")); conn != "" {
+		return DB{ConnString: conn}
+	}
+	host := getEnv("DB_HOST", "10.0.0.1")
 	return DB{
-		Host:     getEnv("DB_HOST", "10.0.0.1"),
+		Host:     host,
 		Port:     getEnv("DB_PORT", "5440"),
 		User:     getEnv("DB_USER", "dev_gabriel"),
 		Password: getEnv("DB_PASSWORD", "ADPG87784554@#"),
 		Database: getEnv("DB_NAME", "adpg_barber_shop"),
-		SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		SSLMode:  defaultSSLMode(host, os.Getenv("DB_SSLMODE")),
 	}
 }
 
@@ -98,11 +123,25 @@ type TransactionalEmail struct {
 }
 
 func LoadTransactionalEmail() TransactionalEmail {
+	key := strings.TrimSpace(os.Getenv("BREVO_API_KEY"))
+	sender := strings.TrimSpace(os.Getenv("BREVO_SENDER_EMAIL"))
+	providerRaw := strings.TrimSpace(os.Getenv("EMAIL_PROVIDER"))
+	var provider string
+	switch {
+	case providerRaw != "":
+		provider = providerRaw
+	case key != "" && sender != "":
+		// Com chave e remetente definidos, usa Brevo mesmo se EMAIL_PROVIDER estiver em falta
+		// (evita o default "log" do .env.example bloquear envio real).
+		provider = "brevo"
+	default:
+		provider = "log"
+	}
 	return TransactionalEmail{
-		Provider:    getEnv("EMAIL_PROVIDER", "log"),
-		BrevoAPIKey: getEnv("BREVO_API_KEY", ""),
-		SenderName:  getEnv("BREVO_SENDER_NAME", "HenryBebidas"),
-		SenderEmail: getEnv("BREVO_SENDER_EMAIL", ""),
+		Provider:    provider,
+		BrevoAPIKey: key,
+		SenderName:  strings.TrimSpace(getEnv("BREVO_SENDER_NAME", "HenryBebidas")),
+		SenderEmail: sender,
 	}
 }
 
