@@ -1,4 +1,4 @@
-module cardapio-henry-api
+module henry-bebidas-api
 
 go 1.25.6
 

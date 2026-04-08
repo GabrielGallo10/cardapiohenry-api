@@ -1,4 +1,4 @@
-APP_NAME=cardapio-henry-api
+APP_NAME=henry-bebidas-api
 
 .PHONY: run test tidy db-up db-down build
 

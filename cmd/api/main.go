@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 	"time"
 
 
-	"cardapio-henry-api/internal/config"
-	"cardapio-henry-api/internal/database"
-	"cardapio-henry-api/internal/handler"
-	"cardapio-henry-api/internal/middleware"
+	"henry-bebidas-api/internal/config"
+	"henry-bebidas-api/internal/database"
+	"henry-bebidas-api/internal/handler"
+	"henry-bebidas-api/internal/middleware"
 	"github.com/joho/godotenv"
 )
 
@@ -43,6 +43,10 @@ func main() {
 	// ROTAS PUBLICAS
 	mux.HandleFunc("POST /register", handler.Register)
 	mux.HandleFunc("POST /login", handler.Login)
+	mux.HandleFunc("GET /storage/{path...}", handler.GetStorage)
+	mux.HandleFunc("POST /password-reset/request", handler.PasswordResetRequest)
+	mux.HandleFunc("POST /password-reset/verify", handler.PasswordResetVerify)
+	mux.HandleFunc("POST /password-reset/confirm", handler.PasswordResetConfirm)
 
 	// ROTAS PROTEGIDAS POR TOKEN
 	mux.Handle("/categorias", middleware.JWT(http.HandlerFunc(handler.Categorias)))

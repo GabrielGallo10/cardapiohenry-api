@@ -1,12 +1,13 @@
-package middleware
+﻿package middleware
 
 import (
 	"errors"
 	"net/http"
 	"strings"
 
-	"cardapio-henry-api/internal/auth"
-	"cardapio-henry-api/internal/config"
+	"henry-bebidas-api/internal/auth"
+	"henry-bebidas-api/internal/config"
+	"henry-bebidas-api/internal/database"
 	"encoding/json"
 	"log"
 	"context"
@@ -100,4 +101,18 @@ func GetUserIDFromToken(r *http.Request) (int64, error) {
 	}
 
 	return claims.UserID, nil
+}
+
+func IsAdmin(ctx context.Context, userID int64) (bool, error) {
+	var cargo string
+	err := database.Pool.QueryRow(
+		ctx,
+		`SELECT cargo FROM usuarios WHERE id_usuario = $1`,
+		userID,
+	).Scan(&cargo)
+	if err != nil {
+		return false, err
+	}
+
+	return cargo == "admin", nil
 }

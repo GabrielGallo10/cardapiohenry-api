@@ -1,12 +1,12 @@
-package handler
+﻿package handler
 
 import (
 	"encoding/json"
 	"net/http"
 
-	"cardapio-henry-api/internal/config"
-	"cardapio-henry-api/internal/database"
-	"cardapio-henry-api/internal/auth"
+	"henry-bebidas-api/internal/config"
+	"henry-bebidas-api/internal/database"
+	"henry-bebidas-api/internal/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 

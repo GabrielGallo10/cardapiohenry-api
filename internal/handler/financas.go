@@ -1,11 +1,13 @@
-package handler
+﻿package handler
 
 import (
-	"net/http"
-	"cardapio-henry-api/internal/database"
 	"encoding/json"
+	"net/http"
 	"strconv"
 	"time"
+
+	"henry-bebidas-api/internal/database"
+	"henry-bebidas-api/internal/middleware"
 )
 
 type FinancaRequest struct {
@@ -29,6 +31,8 @@ func Financas(w http.ResponseWriter, r *http.Request) {
 		ListarFinancas(w, r)
 	case http.MethodPost:
 		CriarFinanca(w, r)
+	case http.MethodDelete:
+		DeletarFinancas(w, r)
 	default:
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
@@ -157,6 +161,42 @@ func DeletarFinanca(w http.ResponseWriter, r *http.Request, id int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Finança deletada com sucesso"}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func DeletarFinancas(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserIDFromToken(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	isAdmin, err := middleware.IsAdmin(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "erro ao validar permissão", http.StatusInternalServerError)
+		return
+	}
+	if !isAdmin {
+		http.Error(w, "acesso negado: apenas admin pode limpar finanças", http.StatusForbidden)
+		return
+	}
+
+	_, err = database.Pool.Exec(
+		r.Context(),
+		`DELETE FROM financas`,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"message":            "Finanças deletadas com sucesso",
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

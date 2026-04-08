@@ -1,13 +1,14 @@
-package handler
+﻿package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
-	"cardapio-henry-api/internal/middleware"
-	"cardapio-henry-api/internal/database"
-	"encoding/json"
+
+	"henry-bebidas-api/internal/database"
+	"henry-bebidas-api/internal/middleware"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -41,6 +42,8 @@ type PedidoResponse struct {
 	CEPEndereco string `json:"cep_endereco"`
 	StatusPedido string `json:"status_pedido"`
 	ValorTotal float64 `json:"valor_total"`
+	MetodoPagamento *string `json:"metodo_pagamento"`
+	Observacoes *string `json:"observacoes"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -66,6 +69,8 @@ type PedidoResponseByID struct {
 	CEPEndereco string `json:"cep_endereco"`
 	StatusPedido string `json:"status_pedido"`
 	ValorTotal float64 `json:"valor_total"`
+	MetodoPagamento *string `json:"metodo_pagamento"`
+	Observacoes *string `json:"observacoes"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	ItemsPedido []ItemsPedidoByID `json:"items_pedido"`
@@ -112,15 +117,26 @@ func PedidosByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isAdmin, err := middleware.IsAdmin(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "erro ao validar permissão", http.StatusInternalServerError)
+		return
+	}
+
 	var pedido PedidoResponseByID
-	err = database.Pool.QueryRow(
-		r.Context(),
-		`SELECT p.id_pedido, p.nome, p.telefone, p.data_horario, e.apelido, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.cep, p.status_pedido, p.valor_total, p.created_at, p.updated_at
+	query := `SELECT p.id_pedido, p.nome, p.telefone, p.data_horario, e.apelido, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.cep, p.status_pedido, p.valor_total, p.metodo_pagamento, p.observacoes, p.created_at, p.updated_at
 		FROM pedidos p
 		LEFT JOIN enderecos e ON e.id_endereco = p.cd_endereco
-		WHERE p.id_pedido = $1 AND p.cd_usuario = $2`,
-		id, userID,
-	).Scan(
+		WHERE p.id_pedido = $1 AND p.cd_usuario = $2`
+	args := []any{id, userID}
+	if isAdmin {
+		query = `SELECT p.id_pedido, p.nome, p.telefone, p.data_horario, e.apelido, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.cep, p.status_pedido, p.valor_total, p.metodo_pagamento, p.observacoes, p.created_at, p.updated_at
+		FROM pedidos p
+		LEFT JOIN enderecos e ON e.id_endereco = p.cd_endereco
+		WHERE p.id_pedido = $1`
+		args = []any{id}
+	}
+	err = database.Pool.QueryRow(r.Context(), query, args...).Scan(
 		&pedido.ID,
 		&pedido.NomeCliente,
 		&pedido.TelefoneCliente,
@@ -135,6 +151,8 @@ func PedidosByID(w http.ResponseWriter, r *http.Request) {
 		&pedido.CEPEndereco,
 		&pedido.StatusPedido,
 		&pedido.ValorTotal,
+		&pedido.MetodoPagamento,
+		&pedido.Observacoes,
 		&pedido.CreatedAt,
 		&pedido.UpdatedAt,
 	)
@@ -180,15 +198,32 @@ func PedidosByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListarPedidos(w http.ResponseWriter, r *http.Request, userID int64) {
-	rows, err := database.Pool.Query(
-		r.Context(),
-		`SELECT p.id_pedido, p.nome, p.telefone, p.data_horario, e.apelido, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.cep, p.status_pedido, p.valor_total, p.created_at, p.updated_at
-		FROM pedidos p
-		LEFT JOIN enderecos e ON e.id_endereco = p.cd_endereco
-		WHERE cd_usuario = $1
-		ORDER BY id_pedido DESC`,
-		userID,
-	)
+	isAdmin, err := middleware.IsAdmin(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "erro ao validar permissão", http.StatusInternalServerError)
+		return
+	}
+
+	var rows pgx.Rows
+	if isAdmin {
+		rows, err = database.Pool.Query(
+			r.Context(),
+			`SELECT p.id_pedido, p.nome, p.telefone, p.data_horario, e.apelido, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.cep, p.status_pedido, p.valor_total, p.metodo_pagamento, p.observacoes, p.created_at, p.updated_at
+			FROM pedidos p
+			LEFT JOIN enderecos e ON e.id_endereco = p.cd_endereco
+			ORDER BY p.id_pedido DESC`,
+		)
+	} else {
+		rows, err = database.Pool.Query(
+			r.Context(),
+			`SELECT p.id_pedido, p.nome, p.telefone, p.data_horario, e.apelido, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.cep, p.status_pedido, p.valor_total, p.metodo_pagamento, p.observacoes, p.created_at, p.updated_at
+			FROM pedidos p
+			LEFT JOIN enderecos e ON e.id_endereco = p.cd_endereco
+			WHERE p.cd_usuario = $1
+			ORDER BY p.id_pedido DESC`,
+			userID,
+		)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -213,6 +248,8 @@ func ListarPedidos(w http.ResponseWriter, r *http.Request, userID int64) {
 			&pedido.CEPEndereco,
 			&pedido.StatusPedido,
 			&pedido.ValorTotal,
+			&pedido.MetodoPagamento,
+			&pedido.Observacoes,
 			&pedido.CreatedAt,
 			&pedido.UpdatedAt,
 		)
@@ -346,6 +383,22 @@ func CriarPedido(w http.ResponseWriter, r *http.Request, userID int64) {
 }
 
 func DeletarPedidos(w http.ResponseWriter, r *http.Request, _ int64) {
+	userID, err := middleware.GetUserIDFromToken(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	isAdmin, err := middleware.IsAdmin(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "erro ao validar permissão", http.StatusInternalServerError)
+		return
+	}
+	if !isAdmin {
+		http.Error(w, "acesso negado: apenas admin pode limpar pedidos", http.StatusForbidden)
+		return
+	}
+
 	result, err := database.Pool.Exec(
 		r.Context(),
 		`DELETE FROM pedidos`,
@@ -367,7 +420,7 @@ func DeletarPedidos(w http.ResponseWriter, r *http.Request, _ int64) {
 }
 
 func AtualizarStatusPedido(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil || id <= 0 {
 		http.Error(w, "ID do pedido inválido", http.StatusBadRequest)
 		return
@@ -386,23 +439,88 @@ func AtualizarStatusPedido(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = database.Pool.Exec(
-		r.Context(),
-		`UPDATE pedidos SET status_pedido = $1 WHERE id_pedido = $2 AND cd_usuario = $3`,
-		atualizarStatusPedidoRequest.StatusPedido,
-		id,
-		userID,
-	)
+	isAdmin, err := middleware.IsAdmin(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "erro ao validar permissão", http.StatusInternalServerError)
+		return
+	}
+
+	statusPermitido := map[string]bool{
+		"novo":       true,
+		"em_preparo": true,
+		"pronto":     true,
+		"concluido":  true,
+	}
+	if !statusPermitido[atualizarStatusPedidoRequest.StatusPedido] {
+		http.Error(w, "status_pedido inválido", http.StatusBadRequest)
+		return
+	}
+
+	selectCurrentStatusQuery := `SELECT status_pedido FROM pedidos WHERE id_pedido = $1 AND cd_usuario = $2`
+	selectArgs := []any{id, userID}
+	if isAdmin {
+		selectCurrentStatusQuery = `SELECT status_pedido FROM pedidos WHERE id_pedido = $1`
+		selectArgs = []any{id}
+	}
+	var statusAtual string
+	err = database.Pool.QueryRow(r.Context(), selectCurrentStatusQuery, selectArgs...).Scan(&statusAtual)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "Pedido não encontrado", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ordemStatus := map[string]int{
+		"novo":       0,
+		"em_preparo": 1,
+		"pronto":     2,
+		"concluido":  3,
+	}
+	idxAtual, okAtual := ordemStatus[statusAtual]
+	idxNovo, okNovo := ordemStatus[atualizarStatusPedidoRequest.StatusPedido]
+	if !okAtual || !okNovo {
+		http.Error(w, "status_pedido inválido", http.StatusBadRequest)
+		return
+	}
+	if idxNovo < idxAtual {
+		http.Error(w, "não é permitido voltar status do pedido", http.StatusBadRequest)
+		return
+	}
+	if statusAtual == "pronto" && atualizarStatusPedidoRequest.StatusPedido != "pronto" && atualizarStatusPedidoRequest.StatusPedido != "concluido" {
+		http.Error(w, "pedido pronto só pode ser alterado para concluído", http.StatusBadRequest)
+		return
+	}
+	if statusAtual == "concluido" && atualizarStatusPedidoRequest.StatusPedido != "concluido" {
+		http.Error(w, "pedido concluído não pode voltar de status", http.StatusBadRequest)
+		return
+	}
+
+	query := `UPDATE pedidos SET status_pedido = $1, updated_at = NOW() WHERE id_pedido = $2 AND cd_usuario = $3`
+	args := []any{atualizarStatusPedidoRequest.StatusPedido, id, userID}
+	if isAdmin {
+		query = `UPDATE pedidos SET status_pedido = $1, updated_at = NOW() WHERE id_pedido = $2`
+		args = []any{atualizarStatusPedidoRequest.StatusPedido, id}
+	}
+	result, err := database.Pool.Exec(r.Context(), query, args...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	if result.RowsAffected() == 0 {
+		http.Error(w, "Pedido não encontrado", http.StatusNotFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]any{
+	resp := map[string]any{
 		"message": "Status do pedido atualizado com sucesso.",
-	}); err != nil {
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

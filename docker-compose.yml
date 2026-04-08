@@ -3,10 +3,10 @@ version: "3.9"
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cardapio-henry-postgres
+    container_name: henry-bebidas-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cardapio_henry
+      POSTGRES_DB: henry_bebidas
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:

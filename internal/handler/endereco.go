@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"cardapio-henry-api/internal/database"
-	"cardapio-henry-api/internal/middleware"
+	"henry-bebidas-api/internal/database"
+	"henry-bebidas-api/internal/middleware"
 	"github.com/jackc/pgx/v5"
 )
 

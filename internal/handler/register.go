@@ -1,22 +1,45 @@
-package handler
+﻿package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
-	"cardapio-henry-api/internal/database"
+	"henry-bebidas-api/internal/database"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type registerRequest struct {
 	Name                 string `json:"name"`
+	Email                string `json:"email"`
 	Telefone             string `json:"tel"`
 	Password             string `json:"password"`
 	PasswordConfirmation string `json:"password_confirmation"`
-	Cargo string `json:"cargo"`
 }
 
-// Register cadastra um novo funcionário. A senha é salva em hash (bcrypt).
+func normalizeEmailRegister(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func isValidEmailRegister(emailNorm string) bool {
+	if len(emailNorm) < 5 || len(emailNorm) > 320 {
+		return false
+	}
+	at := strings.LastIndex(emailNorm, "@")
+	if at <= 0 || at == len(emailNorm)-1 {
+		return false
+	}
+	local := emailNorm[:at]
+	domain := emailNorm[at+1:]
+	if len(local) == 0 || len(domain) < 3 || !strings.Contains(domain, ".") {
+		return false
+	}
+	return true
+}
+
+// Register cadastra um novo cliente. A senha é salva em hash (bcrypt).
 func Register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -36,21 +59,43 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Converte a senha em hash para não armazenar texto puro
+	emailNorm := normalizeEmailRegister(req.Email)
+	if !isValidEmailRegister(emailNorm) {
+		http.Error(w, "E-mail inválido", http.StatusBadRequest)
+		return
+	}
+	emailStored := strings.TrimSpace(req.Email)
+
+	var telB strings.Builder
+	for _, r := range req.Telefone {
+		if r >= '0' && r <= '9' {
+			telB.WriteRune(r)
+		}
+	}
+	tel := telB.String()
+	if len(tel) < 10 {
+		http.Error(w, "Telefone inválido", http.StatusBadRequest)
+		return
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Erro ao processar senha", http.StatusInternalServerError)
 		return
 	}
 
-	// Salva no banco; telefone é único
 	_, err = database.Pool.Exec(
 		r.Context(),
-		`INSERT INTO usuarios (nome, telefone, senha, cargo)
-		VALUES ($1, $2, $3, $4)`,
-		req.Name, req.Telefone, string(hashedPassword), req.Cargo,
+		`INSERT INTO usuarios (nome, telefone, email, senha, cargo)
+		VALUES ($1, $2, $3, $4, $5)`,
+		strings.TrimSpace(req.Name), tel, emailStored, string(hashedPassword), "client",
 	)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "E-mail ou telefone já cadastrados", http.StatusConflict)
+			return
+		}
 		http.Error(w, "Erro ao cadastrar usuário.", http.StatusInternalServerError)
 		return
 	}

@@ -1,11 +1,12 @@
-package handler
+﻿package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
-	"cardapio-henry-api/internal/config"
+	"henry-bebidas-api/internal/config"
 )
 
 func Upload(w http.ResponseWriter, r *http.Request) {
@@ -26,6 +27,17 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	contentLength := fileHeader.Size
+	if contentLength <= 0 {
+		if seeker, ok := file.(io.Seeker); ok {
+			end, err := seeker.Seek(0, io.SeekEnd)
+			if err == nil {
+				contentLength = end
+				_, _ = seeker.Seek(0, io.SeekStart)
+			}
+		}
+	}
+
 	contentType := fileHeader.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
 		http.Error(w, "somente imagens são permitidas", http.StatusBadRequest)
@@ -39,11 +51,13 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, objectKey, err := r2Client.UploadImage(r.Context(), file, fileHeader.Filename, contentType)
+	objectKey, err := r2Client.UploadImage(r.Context(), file, contentLength, fileHeader.Filename, contentType)
 	if err != nil {
-		http.Error(w, "erro ao enviar para o R2", http.StatusInternalServerError)
+		http.Error(w, "erro ao enviar para o R2: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	url := config.ResolvePublicMediaURL(r, r2Cfg, objectKey)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

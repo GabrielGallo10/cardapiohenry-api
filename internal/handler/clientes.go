@@ -1,11 +1,11 @@
-package handler
+﻿package handler
 
 import (
 	"encoding/json"
 	"net/http"
 	"strings"
 
-	"cardapio-henry-api/internal/database"
+	"henry-bebidas-api/internal/database"
 )
 
 type ClienteResponse struct {

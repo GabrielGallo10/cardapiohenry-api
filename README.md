@@ -1,6 +1,6 @@
-# Cardapio Henry API
+# HenryBebidas API
 
-Base inicial de API em Go para um sistema de cardapio de distribuidora de bebidas, com conexao PostgreSQL e endpoint de health check.
+API em Go para o projeto HenryBebidas (distribuidora de bebidas), com PostgreSQL.
 
 ## Requisitos
 

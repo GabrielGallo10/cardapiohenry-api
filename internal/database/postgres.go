@@ -1,10 +1,10 @@
-package database
+﻿package database
 
 import (
 	"context"
 	"fmt"
 
-	"cardapio-henry-api/internal/config"
+	"henry-bebidas-api/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

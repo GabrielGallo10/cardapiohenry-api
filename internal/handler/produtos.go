@@ -1,12 +1,13 @@
-package handler
+﻿package handler
 
 import (
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
-	"cardapio-henry-api/internal/database"
+	"henry-bebidas-api/internal/database"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -157,8 +158,25 @@ func AtualizarProduto(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 
-	_, err := database.Pool.Exec(
-		r.Context(),
+	ctx := r.Context()
+	var oldURL string
+	err := database.Pool.QueryRow(ctx,
+		`SELECT COALESCE(url_imagem, '') FROM produtos WHERE id_produto = $1`,
+		id,
+	).Scan(&oldURL)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "Produto não encontrado", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	oldURL = strings.TrimSpace(oldURL)
+	newURL := strings.TrimSpace(req.URLImagem)
+
+	tag, err := database.Pool.Exec(
+		ctx,
 		`UPDATE produtos SET cd_categoria = $1, nome = $2, descricao = $3, preco = $4, disponivel = $5, url_imagem = $6
 		WHERE id_produto = $7`,
 		req.IDCategoria, req.Nome, req.Descricao, req.Preco, req.Disponivel, req.URLImagem, id,
@@ -167,7 +185,15 @@ func AtualizarProduto(w http.ResponseWriter, r *http.Request, id int) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+	if tag.RowsAffected() == 0 {
+		http.Error(w, "Produto não encontrado", http.StatusNotFound)
+		return
+	}
+
+	if oldURL != "" && oldURL != newURL {
+		deleteProductImageFromR2IfLastReference(ctx, oldURL)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Produto atualizado com sucesso"}); err != nil {
@@ -177,16 +203,36 @@ func AtualizarProduto(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 func DeletarProduto(w http.ResponseWriter, r *http.Request, id int) {
-	_, err := database.Pool.Exec(
-		r.Context(),
-		`DELETE FROM produtos WHERE id_produto = $1`,
+	ctx := r.Context()
+	var urlImg string
+	err := database.Pool.QueryRow(ctx,
+		`SELECT COALESCE(url_imagem, '') FROM produtos WHERE id_produto = $1`,
 		id,
-	)
+	).Scan(&urlImg)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "Produto não encontrado", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	urlImg = strings.TrimSpace(urlImg)
+
+	tag, err := database.Pool.Exec(ctx, `DELETE FROM produtos WHERE id_produto = $1`, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+	if tag.RowsAffected() == 0 {
+		http.Error(w, "Produto não encontrado", http.StatusNotFound)
+		return
+	}
+
+	if urlImg != "" {
+		deleteProductImageFromR2IfLastReference(ctx, urlImg)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Produto deletado com sucesso"}); err != nil {

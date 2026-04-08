@@ -1,8 +1,8 @@
-package handler
+﻿package handler
 
 import (
 	"net/http"
-	"cardapio-henry-api/internal/database"
+	"henry-bebidas-api/internal/database"
 	"encoding/json"
 	"strconv"
 )
