@@ -47,12 +47,15 @@ func main() {
 	mux.HandleFunc("POST /password-reset/request", handler.PasswordResetRequest)
 	mux.HandleFunc("POST /password-reset/verify", handler.PasswordResetVerify)
 	mux.HandleFunc("POST /password-reset/confirm", handler.PasswordResetConfirm)
+	mux.HandleFunc("GET /produtos", handler.Produtos)
+	mux.HandleFunc("GET /categorias", handler.Categorias)
 
 	// ROTAS PROTEGIDAS POR TOKEN
 	mux.Handle("/categorias", middleware.JWT(http.HandlerFunc(handler.Categorias)))
 	mux.Handle("DELETE /categorias/{id}", middleware.JWT(http.HandlerFunc(handler.DeletarCategoria)))
-	mux.Handle("/produtos", middleware.JWT(http.HandlerFunc(handler.Produtos)))
-	mux.Handle("/produtos/{id}", middleware.JWT(http.HandlerFunc(handler.ProdutosByID)))
+	mux.Handle("POST /produtos", middleware.JWT(http.HandlerFunc(handler.CriarProdutos)))
+	mux.Handle("PUT /produtos/{id}", middleware.JWT(http.HandlerFunc(handler.ProdutosByID)))
+	mux.Handle("DELETE /produtos/{id}", middleware.JWT(http.HandlerFunc(handler.ProdutosByID)))
 	mux.Handle("GET /clientes", middleware.JWT(http.HandlerFunc(handler.Clientes)))
 	mux.Handle("/enderecos", middleware.JWT(http.HandlerFunc(handler.Enderecos)))
 	mux.Handle("/enderecos/{id}", middleware.JWT(http.HandlerFunc(handler.EnderecosByID)))
