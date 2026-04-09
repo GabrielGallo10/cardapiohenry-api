@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: cardapiohenry-api
+    runtime: go
+    plan: free
+    buildCommand: go build -tags netgo -ldflags '-s -w' -o app ./cmd/api
+    startCommand: ./app
+    autoDeploy: true
+    envVars:
+      - key: GO_VERSION
+        value: 1.26.0
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        sync: false
+      - key: PUBLIC_OBJECT_BASE_URL
+        sync: false
