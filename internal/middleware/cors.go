@@ -1,4 +1,4 @@
-// middleware CORS: libera requisições do frontend (Vercel e localhost).
+// middleware CORS: libera requisições do frontend permitido.
 package middleware
 
 import (
@@ -9,10 +9,7 @@ import (
 
 // DefaultAllowedOrigins: origens permitidas quando CORS_ORIGINS não está definido.
 var DefaultAllowedOrigins = []string{
-	"http://localhost:3000",
-	"http://localhost:3001",
-	"http://127.0.0.1:3000",
-	"http://127.0.0.1:3001",
+	"https://cardapiohenry.vercel.app",
 }
 
 // CORS adiciona os headers para o navegador aceitar requisições do front. Pode configurar origens em CORS_ORIGINS.
@@ -71,7 +68,9 @@ func trim(s string) string {
 }
 
 func isAllowedOrigin(origin string, allowed []string) bool {
+	origin = normalizeOrigin(origin)
 	for _, rule := range allowed {
+		rule = normalizeOrigin(rule)
 		if rule == origin {
 			return true
 		}
@@ -90,4 +89,8 @@ func isAllowedOrigin(origin string, allowed []string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeOrigin(v string) string {
+	return strings.TrimRight(strings.TrimSpace(v), "/")
 }
