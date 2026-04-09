@@ -9,7 +9,7 @@ import (
 
 // DefaultAllowedOrigins: origens permitidas quando CORS_ORIGINS não está definido.
 var DefaultAllowedOrigins = []string{
-	"https://cardapiohenry.vercel.app",
+	"https://henrybebidas.vercel.app",
 }
 
 // CORS adiciona os headers para o navegador aceitar requisições do front. Pode configurar origens em CORS_ORIGINS.
