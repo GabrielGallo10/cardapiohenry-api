@@ -48,7 +48,9 @@ func main() {
 	mux.HandleFunc("POST /password-reset/verify", handler.PasswordResetVerify)
 	mux.HandleFunc("POST /password-reset/confirm", handler.PasswordResetConfirm)
 	mux.HandleFunc("GET /produtos", handler.Produtos)
+	mux.HandleFunc("GET /produtos/{id}", handler.ProdutosByID)
 	mux.HandleFunc("GET /categorias", handler.Categorias)
+	mux.HandleFunc("GET /ws", handler.RealtimeWS)
 
 	// ROTAS PROTEGIDAS POR TOKEN
 	mux.Handle("/categorias", middleware.JWT(http.HandlerFunc(handler.Categorias)))

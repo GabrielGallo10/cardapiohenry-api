@@ -9,6 +9,7 @@ import (
 
 	"henry-bebidas-api/internal/database"
 	"henry-bebidas-api/internal/middleware"
+	"henry-bebidas-api/internal/realtime"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -374,6 +375,7 @@ func CriarPedido(w http.ResponseWriter, r *http.Request, userID int64) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	realtime.Publish("orders.updated")
 	if err := json.NewEncoder(w).Encode(map[string]any{
 		"message":     "Pedido criado com sucesso.",
 	}); err != nil {
@@ -410,6 +412,7 @@ func DeletarPedidos(w http.ResponseWriter, r *http.Request, _ int64) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	realtime.Publish("orders.updated")
 	if err := json.NewEncoder(w).Encode(map[string]any{
 		"message":           "Pedidos deletados com sucesso.",
 		"pedidos_removidos": result.RowsAffected(),
@@ -517,6 +520,7 @@ func AtualizarStatusPedido(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	realtime.Publish("orders.updated")
 	resp := map[string]any{
 		"message": "Status do pedido atualizado com sucesso.",
 	}

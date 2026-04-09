@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"henry-bebidas-api/internal/database"
+	"henry-bebidas-api/internal/realtime"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -120,6 +121,7 @@ func CriarProdutos(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	realtime.Publish("menu.updated")
 	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Produto criado com sucesso"}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -197,6 +199,7 @@ func AtualizarProduto(w http.ResponseWriter, r *http.Request, id int) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	realtime.Publish("menu.updated")
 	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Produto atualizado com sucesso"}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -236,6 +239,7 @@ func DeletarProduto(w http.ResponseWriter, r *http.Request, id int) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	realtime.Publish("menu.updated")
 	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Produto deletado com sucesso"}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
