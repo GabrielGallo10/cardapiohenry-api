@@ -4,11 +4,11 @@ package middleware
 import (
 	"net/http"
 	"os"
+	"strings"
 )
 
 // DefaultAllowedOrigins: origens permitidas quando CORS_ORIGINS não está definido.
 var DefaultAllowedOrigins = []string{
-	"https://studio-leoleite.vercel.app",
 	"http://localhost:3000",
 	"http://localhost:3001",
 	"http://127.0.0.1:3000",
@@ -21,18 +21,19 @@ func CORS(next http.Handler) http.Handler {
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		origins = splitTrim(v, ",")
 	}
-	allowed := make(map[string]bool)
-	for _, o := range origins {
-		allowed[o] = true
-	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin != "" && allowed[origin] {
+		if origin != "" && isAllowedOrigin(origin, origins) {
+			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
+			w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
+		} else {
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == http.MethodOptions {
@@ -67,4 +68,26 @@ func trim(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+func isAllowedOrigin(origin string, allowed []string) bool {
+	for _, rule := range allowed {
+		if rule == origin {
+			return true
+		}
+
+		// Permite wildcard simples, ex: https://*.vercel.app
+		if strings.Contains(rule, "*") {
+			parts := strings.Split(rule, "*")
+			if len(parts) != 2 {
+				continue
+			}
+			prefix := parts[0]
+			suffix := parts[1]
+			if strings.HasPrefix(origin, prefix) && strings.HasSuffix(origin, suffix) {
+				return true
+			}
+		}
+	}
+	return false
 }

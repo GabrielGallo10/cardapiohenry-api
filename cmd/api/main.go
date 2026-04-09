@@ -62,14 +62,20 @@ func main() {
 	mux.Handle("POST /upload", middleware.JWT(http.HandlerFunc(handler.Upload)))
 	mux.Handle("/financas", middleware.JWT(http.HandlerFunc(handler.Financas)))
 	mux.Handle("/financas/{id}", middleware.JWT(http.HandlerFunc(handler.FinancasByID)))
-	
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    addr,
 		Handler: middleware.CORS(mux),
 	}
 
 	go func() {
-		log.Println("Servidor rodando na porta 8080")
+		log.Printf("Servidor rodando na porta %s", port)
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
