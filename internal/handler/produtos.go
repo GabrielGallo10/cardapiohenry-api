@@ -24,6 +24,7 @@ type ProdutosResponse struct {
 	ID int `json:"id"`
 	NomeCategoria string `json:"nome_categoria"`
 	Nome string `json:"nome"`
+	Descricao string `json:"descricao"`
 	Preco float64 `json:"preco"`
 	Disponivel bool `json:"disponivel"`
 	URLImagem string `json:"url_imagem"`
@@ -72,7 +73,7 @@ func ProdutosByID(w http.ResponseWriter, r *http.Request) {
 func ListarProdutos(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.Pool.Query(
 		r.Context(), 
-		`SELECT p.id_produto, c.nome as nome_categoria, p.nome, p.preco, p.disponivel, p.url_imagem 
+		`SELECT p.id_produto, c.nome as nome_categoria, p.nome, p.descricao, p.preco, p.disponivel, p.url_imagem 
 		FROM produtos p 
 		LEFT JOIN categorias c ON p.cd_categoria = c.id_categoria`,
 	)
@@ -85,7 +86,7 @@ func ListarProdutos(w http.ResponseWriter, r *http.Request) {
 	produtos := make([]ProdutosResponse, 0)
 	for rows.Next() {
 		var produto ProdutosResponse
-		if err := rows.Scan(&produto.ID, &produto.NomeCategoria, &produto.Nome, &produto.Preco, &produto.Disponivel, &produto.URLImagem); err != nil {
+		if err := rows.Scan(&produto.ID, &produto.NomeCategoria, &produto.Nome, &produto.Descricao, &produto.Preco, &produto.Disponivel, &produto.URLImagem); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
