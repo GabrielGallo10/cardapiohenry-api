@@ -3,8 +3,10 @@
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"henry-bebidas-api/internal/database"
@@ -20,7 +22,58 @@ type PedidoRequest struct {
 	IDEndereco      int     `json:"id_endereco"`
 	FormaPagamento  string  `json:"forma_pagamento"`
 	Observacoes     *string `json:"observacoes"`
-	ItemsPedido   []ItemsPedido   `json:"items_pedido"`
+	ItemsPedido     []ItemsPedido `json:"items_pedido"`
+	// Opcionais: para "Cartão na entrega" — crédito ou débito + bandeira (taxa aplicada no valor_total).
+	TipoCartao string `json:"tipo_cartao"` // "credito" | "debito"
+	Bandeira   string `json:"bandeira"`   // "visa" | "mastercard" | "amex" | "elo"
+}
+
+// cardFeePercentBr retorna a taxa % válida para o par tipo+bandeira, ou ok=false.
+func cardFeePercentBr(tipo, bandeira string) (pct float64, ok bool) {
+	t := strings.TrimSpace(strings.ToLower(tipo))
+	b := strings.TrimSpace(strings.ToLower(bandeira))
+	switch t {
+	case "credito":
+		switch b {
+		case "visa", "mastercard":
+			return 3.15, true
+		case "amex", "elo":
+			return 4.91, true
+		}
+	case "debito":
+		switch b {
+		case "visa", "mastercard":
+			return 1.37, true
+		case "elo":
+			return 2.58, true
+		}
+	}
+	return 0, false
+}
+
+func isFormaCartaoNaEntrega(forma string) bool {
+	l := strings.ToLower(strings.TrimSpace(forma))
+	return strings.Contains(l, "cartão na entrega") || strings.Contains(l, "cartao na entrega")
+}
+
+func labelBandeira(b string) string {
+	switch strings.TrimSpace(strings.ToLower(b)) {
+	case "visa":
+		return "Visa"
+	case "mastercard":
+		return "Mastercard"
+	case "amex":
+		return "Amex"
+	case "elo":
+		return "Elo"
+	default:
+		return b
+	}
+}
+
+func formatPctBR(p float64) string {
+	s := fmt.Sprintf("%.2f", p)
+	return strings.Replace(s, ".", ",", 1)
 }
 
 type ItemsPedido struct {
@@ -334,6 +387,31 @@ func CriarPedido(w http.ResponseWriter, r *http.Request, userID int64) {
 		valorTotal += preco * float64(item.Quantidade)
 	}
 
+	metodoPagamento := strings.TrimSpace(pedido.FormaPagamento)
+	tipoC := strings.TrimSpace(pedido.TipoCartao)
+	band := strings.TrimSpace(pedido.Bandeira)
+
+	if isFormaCartaoNaEntrega(metodoPagamento) {
+		if tipoC == "" || band == "" {
+			http.Error(w, "Para cartão na entrega informe tipo_cartao (credito ou debito) e bandeira (visa, mastercard, amex ou elo).", http.StatusBadRequest)
+			return
+		}
+		pct, ok := cardFeePercentBr(tipoC, band)
+		if !ok {
+			http.Error(w, "Combinação inválida de tipo_cartao e bandeira para cartão na entrega.", http.StatusBadRequest)
+			return
+		}
+		valorTotal = valorTotal + valorTotal*(pct/100.0)
+		tipoLabel := "crédito"
+		if strings.ToLower(tipoC) == "debito" {
+			tipoLabel = "débito"
+		}
+		metodoPagamento = "Cartão " + tipoLabel + " na entrega — " + labelBandeira(band) + " (taxa " + formatPctBR(pct) + "%)"
+	} else if tipoC != "" || band != "" {
+		http.Error(w, "tipo_cartao e bandeira só devem ser enviados para pagamento com cartão na entrega.", http.StatusBadRequest)
+		return
+	}
+
 	var idPedido int
 	err = tx.QueryRow(
 		r.Context(),
@@ -345,7 +423,7 @@ func CriarPedido(w http.ResponseWriter, r *http.Request, userID int64) {
 		pedido.NomeCliente,
 		pedido.TelefoneCliente,
 		valorTotal,
-		pedido.FormaPagamento,
+		metodoPagamento,
 		pedido.Observacoes,
 	).Scan(&idPedido)
 	if err != nil {
